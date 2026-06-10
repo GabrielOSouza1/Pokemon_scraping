@@ -42,7 +42,7 @@ atributos_combate = ['HP', 'Ataque', 'Defesa', 'Sp_Atk', 'Sp_Def', 'Speed']
 st.title("Pokémon Data Mining & Analytics — Fase 2")
 st.markdown("Análise estatística multidimensional, agrupamento via IA e Comparação de Criaturas.")
 
-with st.expander("🔍 Painel de Filtros Avançados", expanded=True):
+with st.expander("Painel de Filtros Avançados", expanded=True):
     col_f1, col_f2 = st.columns(2)
     
     with col_f1:
@@ -67,9 +67,9 @@ df_filtrado = df_original[
 ]
 
 if df_filtrado.empty:
-    st.warning("⚠️ Nenhum Pokémon encontrado com os filtros selecionados. Ajuste as opções no painel acima.")
+    st.warning("Nenhum Pokémon encontrado com os filtros selecionados. Ajuste as opções no painel acima.")
 else:
-    st.markdown("### 📊 Visão Geral da População")
+    st.markdown("### Visão Geral da População")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -123,12 +123,19 @@ else:
     fig_clusters.update_xaxes(showticklabels=False)
     st.plotly_chart(fig_clusters, use_container_width=True)
 
-    with st.expander("📄 Visualizar Base de Dados Detalhada (Tabela)", expanded=False):
-        st.dataframe(df_filtrado[['Numero', 'Nome', 'Tipo', 'BST', 'Tier'] + atributos_combate], use_container_width=True)
+    st.subheader("Base de Dados Detalhada")
+    pesquisa_nome = st.text_input("Pesquisar Pokémon pelo Nome:", "", help="Digite o nome completo ou parte dele para filtrar a tabela abaixo.")
+    
+    if pesquisa_nome:
+        df_tabela = df_filtrado[df_filtrado['Nome'].str.contains(pesquisa_nome, case=False, na=False)]
+    else:
+        df_tabela = df_filtrado
+
+    st.dataframe(df_tabela[['Numero', 'Nome', 'Tipo', 'BST', 'Tier'] + atributos_combate], use_container_width=True)
 
     st.markdown("---")
 
-    st.markdown("### ⚔️ Confronto Direto de Atributos (X1)")
+    st.markdown("### Confronto Direto de Atributos (X1)")
     st.write("Escolha duas criaturas da base completa para comparar detalhadamente seus status e classificações.")
     
     lista_nomes = sorted(df_original['Nome'].unique())
