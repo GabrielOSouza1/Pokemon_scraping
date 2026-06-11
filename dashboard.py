@@ -7,13 +7,33 @@ from sklearn.metrics import silhouette_score
 import plotly.express as px
 import plotly.graph_objects as go
 
+TIPO_CORES = {
+    "Grass": "#78C850",
+    "Fire": "#F08030",
+    "Water": "#6890F0",
+    "Electric": "#F8D030",
+    "Psychic": "#F85888",
+    "Ice": "#98D8D8",
+    "Dragon": "#7038F8",
+    "Dark": "#705848",
+    "Fairy": "#EE99AC",
+    "Normal": "#A8A878",
+    "Fighting": "#C03028",
+    "Flying": "#A890F0",
+    "Poison": "#A040A0",
+    "Ground": "#E0C068",
+    "Rock": "#B8A038",
+    "Bug": "#A8B820",
+    "Ghost": "#705898",
+    "Steel": "#B8B8D0"
+}
+
 st.set_page_config(page_title="Pokémon Analytics - Fase 2", layout="wide")
 
 @st.cache_data
 def carregar_e_processar_dados():
     df = pd.read_csv("pokemon_data.csv") 
     
-    # --- CORREÇÃO DO ERRO: Unifica Tipo_1 e Tipo_2 no padrão esperado pelo resto do código ---
     def tratar_tipos(row):
         t1 = str(row['Tipo_1']).strip()
         t2 = str(row['Tipo_2']).strip()
@@ -80,7 +100,6 @@ with st.expander("Painel de Filtros Avançados", expanded=True):
 if tipos_selecionados:
     def validar_tipos(tipo_pokemon):
         tipos = [t.strip() for t in str(tipo_pokemon).split('/')]
-        # Alterado para all(): exibe APENAS se todos os tipos do Pokémon estiverem selecionados
         return all(tipo in tipos_selecionados for tipo in tipos)
 
     mascara_tipo = df_original['Tipo'].apply(validar_tipos)
@@ -108,7 +127,7 @@ else:
     with col_graf1:
         st.subheader("Análise de Correlação: Ataque vs Defesa")
         fig_disp = px.scatter(
-            df_filtrado, x='Ataque', y='Defesa', color='Tier', # Trocado para 'Tier' para fazer mais sentido com o cluster
+            df_filtrado, x='Ataque', y='Defesa', color='Tier',
             hover_data=['Nome', 'BST'],
             labels={'Ataque': 'Poder de Ataque Físico', 'Defesa': 'Poder de Defesa Física'}
         )
@@ -124,7 +143,7 @@ else:
         st.plotly_chart(fig_hist, use_container_width=True)
 
     st.subheader("Média de Poder (BST) por Tipo Elementar Individual")
-    # Correção do Groupby para tipos compostos desmembrados
+
     df_explodido = df_filtrado.copy()
     df_explodido['Tipo_Separado'] = df_explodido['Tipo'].str.split('/')
     df_explodido = df_explodido.explode('Tipo_Separado')
@@ -133,8 +152,11 @@ else:
     media_por_tipo = df_explodido.groupby('Tipo_Separado')['BST'].mean().reset_index().sort_values('BST', ascending=False)
     
     fig_barras = px.bar(
-        media_por_tipo, x='Tipo_Separado', y='BST', color='Tipo_Separado',
-        labels={'BST': 'Média de BST', 'Tipo_Separado': 'Tipo Elementar'}
+        media_por_tipo,
+        x='Tipo_Separado',
+        y='BST',
+        color='Tipo_Separado',
+        color_discrete_map=TIPO_CORES
     )
     fig_barras.update_layout(showlegend=False, xaxis_tickangle=-45)
     st.plotly_chart(fig_barras, use_container_width=True)
