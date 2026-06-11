@@ -12,6 +12,17 @@ st.set_page_config(page_title="Pokémon Analytics - Fase 2", layout="wide")
 @st.cache_data
 def carregar_e_processar_dados():
     df = pd.read_csv("pokemon_data.csv") 
+    
+    # --- CORREÇÃO DO ERRO: Unifica Tipo_1 e Tipo_2 no padrão esperado pelo resto do código ---
+    def tratar_tipos(row):
+        t1 = str(row['Tipo_1']).strip()
+        t2 = str(row['Tipo_2']).strip()
+        if t2 == 'None' or pd.isna(row['Tipo_2']) or t2 == '':
+            return t1
+        return f"{t1} / {t2}"
+    
+    df['Tipo'] = df.apply(tratar_tipos, axis=1)
+
     atributos_combate = ['HP', 'Ataque', 'Defesa', 'Sp_Atk', 'Sp_Def', 'Speed']
     
     scaler = StandardScaler()
@@ -46,12 +57,17 @@ with st.expander("Painel de Filtros Avançados", expanded=True):
     col_f1, col_f2 = st.columns(2)
     
     with col_f1:
-        todos_tipos = sorted(df_original['Tipo'].unique())
+        lista_tipos_unicos = set()
+        for t in df_original['Tipo'].dropna().unique():
+            for sub_tipo in str(t).split('/'):
+                lista_tipos_unicos.add(sub_tipo.strip())
+        todos_tipos = sorted(list(lista_tipos_unicos))
+        
         tipos_selecionados = st.multiselect(
             "Filtrar por Tipos Elementares:", 
             todos_tipos, 
             default=todos_tipos,
-            help="Selecione um ou mais tipos. Deixe vazio para alertar o painel."
+            help="O Pokémon será exibido se pelo menos um de seus tipos estiver selecionado."
         )
         
     with col_f2:
@@ -61,10 +77,17 @@ with st.expander("Painel de Filtros Avançados", expanded=True):
             bst_min, bst_max, (bst_min, bst_max)
         )
 
-df_filtrado = df_original[
-    (df_original['Tipo'].isin(tipos_selecionados)) & 
-    (df_original['BST'].between(faixa_bst[0], faixa_bst[1]))
-]
+if tipos_selecionados:
+    def validar_tipos(tipo_pokemon):
+        tipos = [t.strip() for t in str(tipo_pokemon).split('/')]
+        # Alterado para all(): exibe APENAS se todos os tipos do Pokémon estiverem selecionados
+        return all(tipo in tipos_selecionados for tipo in tipos)
+
+    mascara_tipo = df_original['Tipo'].apply(validar_tipos)
+else:
+    mascara_tipo = pd.Series(False, index=df_original.index)
+
+df_filtrado = df_original[mascara_tipo & df_original['BST'].between(faixa_bst[0], faixa_bst[1])]
 
 if df_filtrado.empty:
     st.warning("Nenhum Pokémon encontrado com os filtros selecionados. Ajuste as opções no painel acima.")
@@ -85,7 +108,7 @@ else:
     with col_graf1:
         st.subheader("Análise de Correlação: Ataque vs Defesa")
         fig_disp = px.scatter(
-            df_filtrado, x='Ataque', y='Defesa', color='Tipo',
+            df_filtrado, x='Ataque', y='Defesa', color='Tier', # Trocado para 'Tier' para fazer mais sentido com o cluster
             hover_data=['Nome', 'BST'],
             labels={'Ataque': 'Poder de Ataque Físico', 'Defesa': 'Poder de Defesa Física'}
         )
@@ -100,11 +123,18 @@ else:
         fig_hist.add_vline(x=q75, line_dash="dash", line_color="orange", annotation_text="Q3")
         st.plotly_chart(fig_hist, use_container_width=True)
 
-    st.subheader("Média de Poder (BST) por Tipo Elementar")
-    media_por_tipo = df_filtrado.groupby('Tipo')['BST'].mean().reset_index().sort_values('BST', ascending=False)
+    st.subheader("Média de Poder (BST) por Tipo Elementar Individual")
+    # Correção do Groupby para tipos compostos desmembrados
+    df_explodido = df_filtrado.copy()
+    df_explodido['Tipo_Separado'] = df_explodido['Tipo'].str.split('/')
+    df_explodido = df_explodido.explode('Tipo_Separado')
+    df_explodido['Tipo_Separado'] = df_explodido['Tipo_Separado'].str.strip()
+    
+    media_por_tipo = df_explodido.groupby('Tipo_Separado')['BST'].mean().reset_index().sort_values('BST', ascending=False)
+    
     fig_barras = px.bar(
-        media_por_tipo, x='Tipo', y='BST', color='Tipo',
-        labels={'BST': 'Média de BST', 'Tipo': 'Tipo Elementar'}
+        media_por_tipo, x='Tipo_Separado', y='BST', color='Tipo_Separado',
+        labels={'BST': 'Média de BST', 'Tipo_Separado': 'Tipo Elementar'}
     )
     fig_barras.update_layout(showlegend=False, xaxis_tickangle=-45)
     st.plotly_chart(fig_barras, use_container_width=True)
@@ -134,9 +164,7 @@ else:
     st.dataframe(df_tabela[['Numero', 'Nome', 'Tipo', 'BST', 'Tier'] + atributos_combate], use_container_width=True)
 
     st.markdown("---")
-
     st.markdown("### Confronto Direto de Atributos (X1)")
-    st.write("Escolha duas criaturas da base completa para comparar detalhadamente seus status e classificações.")
     
     lista_nomes = sorted(df_original['Nome'].unique())
     
@@ -172,31 +200,29 @@ else:
             marker_color='rgb(44, 160, 44)', text=valores_p2, textposition='auto'
         ))
         fig_comp.update_layout(
-            barmode='group',
-            xaxis_title="Pontuação do Atributo",
-            yaxis_title="Atributos de Combate",
-            height=380,
-            margin=dict(l=20, r=20, t=20, b=20)
+            barmode='group', xaxis_title="Pontuação do Atributo", yaxis_title="Atributos de Combate",
+            height=380, margin=dict(l=20, r=20, t=20, b=20)
         )
         st.plotly_chart(fig_comp, use_container_width=True)
 
     with col_radar:
-        st.markdown("#### Radar de Atributos")
-        categorias = atributos_combate + [atributos_combate[0]]
-        vals_p1_radar = valores_p1 + [valores_p1[0]]
-        vals_p2_radar = valores_p2 + [valores_p2[0]]
-
+        st.markdown("#### Gráfico de Radar de Atributos")
         fig_radar = go.Figure()
+        
+        atributos_radar = atributos_combate + [atributos_combate[0]]
+        valores_p1_radar = valores_p1 + [valores_p1[0]]
+        valores_p2_radar = valores_p2 + [valores_p2[0]]
+        
         fig_radar.add_trace(go.Scatterpolar(
-            r=vals_p1_radar, theta=categorias, fill='toself', name=poke1,
-            line_color='rgb(31, 119, 180)', fillcolor='rgba(31, 119, 180, 0.2)'
+            r=valores_p1_radar, theta=atributos_radar, fill='toself', name=poke1,
+            line_color='rgb(31, 119, 180)'
         ))
         fig_radar.add_trace(go.Scatterpolar(
-            r=vals_p2_radar, theta=categorias, fill='toself', name=poke2,
-            line_color='rgb(44, 160, 44)', fillcolor='rgba(44, 160, 44, 0.2)'
+            r=valores_p2_radar, theta=atributos_radar, fill='toself', name=poke2,
+            line_color='rgb(44, 160, 44)'
         ))
         fig_radar.update_layout(
             polar=dict(radialaxis=dict(visible=True, range=[0, max(max(valores_p1), max(valores_p2)) + 10])),
-            showlegend=True, height=380, margin=dict(l=40, r=40, t=40, b=40)
+            showlegend=True, height=380, margin=dict(l=40, r=40, t=20, b=20)
         )
         st.plotly_chart(fig_radar, use_container_width=True)
